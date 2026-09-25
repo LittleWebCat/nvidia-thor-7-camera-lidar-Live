@@ -1,0 +1,60 @@
+diff -u -x '*.o' -x '*.ko' -x '*.mod*' -x '.*' -x Module.symvers -x modules.order nvidia_r38.2.1_orig/uvc_driver.c build/uvc_driver.c
+--- nvidia_r38.2.1_orig/uvc_driver.c	2026-09-25 14:41:21.363136565 -0500
++++ build/uvc_driver.c	2026-09-25 14:42:12.555452742 -0500
+@@ -36,6 +36,7 @@
+ static unsigned int uvc_quirks_param = -1;
+ unsigned int uvc_dbg_param;
+ unsigned int uvc_timeout_param = UVC_CTRL_STREAMING_TIMEOUT;
++unsigned int uvc_mjpeg_payload_param;
+ 
+ /* ------------------------------------------------------------------------
+  * Utility functions
+@@ -2439,6 +2440,9 @@
+ MODULE_PARM_DESC(trace, "Trace level bitmask");
+ module_param_named(timeout, uvc_timeout_param, uint, 0644);
+ MODULE_PARM_DESC(timeout, "Streaming control requests timeout");
++module_param_named(mjpeg_payload, uvc_mjpeg_payload_param, uint, 0644);
++MODULE_PARM_DESC(mjpeg_payload,
++		 "Cap compressed-format isochronous payload (bytes per (micro)frame, 0 = off)");
+ 
+ /* ------------------------------------------------------------------------
+  * Driver initialization and cleanup
+diff -u -x '*.o' -x '*.ko' -x '*.mod*' -x '.*' -x Module.symvers -x modules.order nvidia_r38.2.1_orig/uvc_video.c build/uvc_video.c
+--- nvidia_r38.2.1_orig/uvc_video.c	2026-09-25 14:41:21.363136565 -0500
++++ build/uvc_video.c	2026-09-25 14:42:03.955399559 -0500
+@@ -258,6 +258,24 @@
+ 
+ 		ctrl->dwMaxPayloadTransferSize = bandwidth;
+ 	}
++
++	/*
++	 * Some cameras (e.g. the 32e4:0234 AR0234 global shutter modules)
++	 * request the largest isochronous packet size for compressed formats
++	 * at every resolution, so only two of them fit on one USB 2.0 bus.
++	 * When the mjpeg_payload parameter is set, cap that request. A frame
++	 * that does not fit the capped bandwidth is dropped, so raise the
++	 * value if the frame rate falls.
++	 */
++	if ((format->flags & UVC_FMT_FLAG_COMPRESSED) &&
++	    uvc_mjpeg_payload_param &&
++	    stream->intf->num_altsetting > 1 &&
++	    ctrl->dwMaxPayloadTransferSize > uvc_mjpeg_payload_param) {
++		uvc_dbg(stream->dev, VIDEO,
++			"Capping compressed payload from %u to %u bytes\n",
++			ctrl->dwMaxPayloadTransferSize, uvc_mjpeg_payload_param);
++		ctrl->dwMaxPayloadTransferSize = uvc_mjpeg_payload_param;
++	}
+ }
+ 
+ static size_t uvc_video_ctrl_size(struct uvc_streaming *stream)
+diff -u -x '*.o' -x '*.ko' -x '*.mod*' -x '.*' -x Module.symvers -x modules.order nvidia_r38.2.1_orig/uvcvideo.h build/uvcvideo.h
+--- nvidia_r38.2.1_orig/uvcvideo.h	2026-09-25 14:41:21.363136565 -0500
++++ build/uvcvideo.h	2026-09-25 14:42:05.223407399 -0500
+@@ -645,6 +645,7 @@
+ extern unsigned int uvc_dbg_param;
+ extern unsigned int uvc_timeout_param;
+ extern unsigned int uvc_hw_timestamps_param;
++extern unsigned int uvc_mjpeg_payload_param;
+ 
+ #define uvc_dbg(_dev, flag, fmt, ...)					\
+ do {									\

@@ -1,0 +1,13 @@
+camvenv/
+__pycache__/
+*.pyc
+
+# Kernel module build output; rebuild with the command in uvcvideo_mjpeg_patch/README.md
+*.o
+*.ko
+*.mod
+*.mod.c
+.*.cmd
+Module.symvers
+modules.order
+.tmp_versions/

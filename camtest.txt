@@ -1,0 +1,162 @@
+=== device ===
+/dev/v4l/by-path/platform-a80aa10000.usb-usb-0:4.1.4.2:1.0-video-index0
+=== formats ===
+ioctl: VIDIOC_ENUM_FMT
+	Type: Video Capture
+
+	[0]: 'MJPG' (Motion-JPEG, compressed)
+		Size: Discrete 1920x1080
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1920x1200
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1600x1200
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1280x960
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1280x720
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1024x768
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 960x720
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 800x600
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 640x480
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 320x240
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+	[1]: 'YUYV' (YUYV 4:2:2)
+		Size: Discrete 1920x1080
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1920x1200
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1600x1200
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1280x960
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1280x720
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 1024x768
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 960x720
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 800x600
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 640x480
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+		Size: Discrete 320x240
+			Interval: Discrete 0.011s (90.000 fps)
+			Interval: Discrete 0.017s (60.000 fps)
+			Interval: Discrete 0.033s (30.000 fps)
+			Interval: Discrete 0.040s (25.000 fps)
+			Interval: Discrete 0.050s (20.000 fps)
+			Interval: Discrete 0.067s (15.000 fps)
+			Interval: Discrete 0.100s (10.000 fps)
+			Interval: Discrete 0.200s (5.000 fps)
+=== current ===
+Format Video Capture:
+	Width/Height      : 320/240
+	Pixel Format      : 'MJPG' (Motion-JPEG)
+	Field             : None
+	Bytes per Line    : 0
+	Size Image        : 153600
+	Colorspace        : sRGB
+	Transfer Function : Rec. 709
+	YCbCr/HSV Encoding: ITU-R 601
+	Quantization      : Default (maps to Full Range)
+	Flags             : 
+Streaming Parameters Video Capture:
+	Capabilities     : timeperframe
+	Frames per second: 15.000 (15/1)
+	Read buffers     : 0
+=== speed test ===
+<<<<<<<<<<<<<< 12.45 fps
+<<<<<<<<<<<<<<< 13.70 fps
+<<<<<<<<<<<<<<< 14.13 fps
+<<<<<<<<<<<<<< 14.34 fps, dropped buffers: 1
+<<<<<<<<<<<<<<< 14.47 fps
+<<<<<<<<<<<<<<< 14.56 fps
+<<<<<<<<<<<<
+Frame rate set to 15.000 fps
