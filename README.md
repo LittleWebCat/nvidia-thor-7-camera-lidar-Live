@@ -5,6 +5,15 @@ AGX Thor (Jetson Linux 38.2.x, kernel 6.8.12-tegra). With the patched
 `uvcvideo` driver in [`uvcvideo_mjpeg_patch/`](uvcvideo_mjpeg_patch/), all six
 stream MJPEG at **1280x720, 30 fps each**, on one USB 2.0 link.
 
+## Demo
+
+[![All six cameras live while driving](media/preview.jpg)](https://github.com/LittleWebCat/thor-six-usb-cameras/releases/download/v1.0/six_cameras_720p_drive.mp4)
+
+[Download the demo video](https://github.com/LittleWebCat/thor-six-usb-cameras/releases/download/v1.0/six_cameras_720p_drive.mp4) (136 MB, from the [v1.0 release](https://github.com/LittleWebCat/thor-six-usb-cameras/releases/tag/v1.0)): a
+7.8-minute drive recorded from the viewer window, all six cameras at about
+30 fps. Top row: left front, narrow front, right front. Bottom row: left back,
+wide front, right back.
+
 ## Cameras
 
 Cameras are identified by USB port (from `/dev/v4l/by-path/`), because
@@ -117,4 +126,5 @@ cat /sys/module/uvcvideo/parameters/mjpeg_payload     # 800; missing = stock dri
 | `requirements.txt` | Python packages for the viewer |
 | `uvcvideo_mjpeg_patch/` | Driver patch, NVIDIA's original source, patched source, `check_all_cameras.py` |
 | `camtest.txt`, `hdcam.txt` | `v4l2-ctl` format and control dumps of the two camera models |
+| `media/preview.jpg` | Frame from the demo video (the video itself is on the v1.0 release) |
 | `cameras_working.py` | Earlier version of the viewer, kept for reference |

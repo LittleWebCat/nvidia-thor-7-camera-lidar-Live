@@ -11,3 +11,6 @@ __pycache__/
 Module.symvers
 modules.order
 .tmp_versions/
+
+# Demo video is attached to the GitHub release, not stored in git (over 100 MB)
+media/*.mp4
