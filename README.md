@@ -11,7 +11,12 @@ kernel 6.8.12-tegra):
 With the patched `uvcvideo` driver in [`uvcvideo_mjpeg_patch/`](uvcvideo_mjpeg_patch/),
 all seven cameras stream MJPEG **640x480 at 30 fps each** on one USB 2.0 link.
 
-![Seven cameras and the LiDAR top-down view](media/preview.jpg)
+## Demo
+
+[![Seven cameras and the LiDAR top-down view](media/preview.jpg)](https://drive.google.com/file/d/1XaF5WDu_NID75tldc3q3ohd11IRpWh4t/view?usp=drive_link)
+
+[Watch the demo video](https://drive.google.com/file/d/1XaF5WDu_NID75tldc3q3ohd11IRpWh4t/view?usp=drive_link)
+(Google Drive): all seven cameras and the live LiDAR top-down view.
 
 ## Cameras
 
