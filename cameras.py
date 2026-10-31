@@ -13,18 +13,17 @@ import numpy as np
  
 # Applied to every camera found.
 #
-# YUYV, not MJPG: in MJPG the Global Shutter cameras (32e4:0234) reserve the
-# largest USB slot (about 24 MB/s) at ANY resolution, so only two fit on one
-# USB 2.0 bus and the rest fail with "Not enough bandwidth for altsetting 11"
-# in the kernel log. For uncompressed YUYV, the uvcvideo quirk 0x80 (set in
-# /etc/modprobe.d/uvcvideo.conf) reserves just width x height x 2 x fps, so
-# all six fit at 320x240@20 (3.1 MB/s each). 640x480@10 already leaves one
-# camera out. Raise these one step at a time and watch the total printed at
-# startup.
-FOURCC = "YUYV"
-WIDTH = 320
-HEIGHT = 240
-FPS = 20
+# MJPG 640x480@30 for the six HD USB cameras (32e4:8830), measured 2026-10-03:
+# all six hold 30 FPS together. Uncompressed YUYV at 640x480 has only a 30 FPS
+# mode and needs about 18 MB/s per camera: two fit on the shared USB 2.0 bus,
+# and a third stops ALL of them ("Failed to resubmit video URB"). MJPG relies
+# on the patched uvcvideo (mjpeg_payload=800, see uvcvideo_mjpeg_patch/).
+# Earlier Global Shutter cameras (32e4:0234) needed YUYV 320x240@20 instead,
+# because without the patch their MJPG reserves about 24 MB/s at any size.
+FOURCC = "MJPG"
+WIDTH = 640
+HEIGHT = 480
+FPS = 30
 
 # With the patched uvcvideo from uvcvideo_mjpeg_patch/ loaded
 # (mjpeg_payload=800), all six also fit in MJPG up to 1280x720@30. Pick a
@@ -44,27 +43,66 @@ if len(sys.argv) == 5:
 # 30 fps camera, under 500 for 20 fps. "gain" (0-100) brightens the picture
 # without costing frame rate.
 #
-# Cameras without "exposure" run on auto exposure. A fixed 300 (30 ms) washed
-# out outdoor scenes (up to 26% of pixels pure white), and auto exposure held
-# 30 fps in testing, so every camera is on auto for now.
+# Cameras without their own "exposure" use EXPOSURE below. A fixed 30 ms
+# washes out views facing daylight (up to 26% of pixels pure white), so set
+# EXPOSURE = None (auto) or a shorter value outdoors.
 # Example:  "4.1.3.4": {"exposure": 100, "gain": 20},
-OVERRIDES = {}
+# The 16MP side cameras (32e4:0298 / 32e4:1298) come out much darker than the
+# HD USB and Global Shutter cameras at the same 30 ms + gain 40 (smaller
+# pixels). The shutter cannot go past 33 ms without losing 30 FPS, so they get
+# more gain instead (2026-10-31).
+OVERRIDES = {
+    "4.1.2.4": {"gain": 80},   # front left
+    "4.1.4.3": {"gain": 80},   # front right
+    "4.1.3.4": {"gain": 80},   # back left
+    "4.1.4.4": {"gain": 80},   # back right
+    # Global Shutter and HD USB cameras were too bright at gain 40.
+    "4.1.2.3": {"gain": 0},    # front mid (Global Shutter)
+    "4.1.2.2": {"gain": 0},    # back (Global Shutter)
+    "4.1.3.3": {"gain": 0},    # front narrow (HD USB)
+}
+
+# Defaults for every camera not overridden above. The HD USB cameras' auto
+# exposure drops them to 17-20 FPS in dim light (measured 2026-09-30); a fixed
+# 30 ms shutter with gain 40 holds 30 FPS at similar brightness indoors.
+# It does not adapt to light: outdoors set EXPOSURE = None (auto) or a much
+# shorter value. None leaves auto exposure / the current gain in place.
+EXPOSURE = 300       # 100 us units (300 = 30 ms), or None for auto
+GAIN = 40            # 0-100, or None
+POWER_LINE_HZ = 60   # anti-flicker for US mains; the cameras default to 50
  
 # For testing: list ports here to run ONLY those cameras, e.g.
 # ONLY_PORTS = ["4.1.4.2", "4.1.3.3"]. Leave empty to run every camera.
 ONLY_PORTS = []
 
-# Grid order and tile names, by USB port: front cameras on the top row,
-# rear/wide on the bottom. Cameras not listed are shown last, by port.
+# Tile names and number keys (1-9), by USB port, in reading order of GRID below.
+# Cameras not listed are shown last, by port.
+# Updated 2026-10-31: two Global Shutter (front mid, back), four 16MP and an
+# HD USB narrow front.
 CAMERA_ORDER = [
-    ("4.1.4.3", "left front"),
-    ("4.1.4.2", "narrow front"),
-    ("4.1.4.4", "right front"),
-    ("4.1.3.3", "left back"),
-    ("4.1.3.4", "wide front"),
-    ("4.1.2.4", "right back"),
+    ("4.1.2.3", "front mid"),
+    ("4.1.2.4", "front left"),
+    ("4.1.3.3", "front narrow"),
+    ("4.1.4.3", "front right"),
+    ("4.1.3.4", "back left"),
+    ("4.1.2.2", "back"),
+    ("4.1.4.4", "back right"),
+]
+
+# Fixed window layout, row by row; None leaves that slot empty. Connected
+# cameras not placed here go on an extra row at the bottom. Set GRID = [] to
+# fill the window automatically in CAMERA_ORDER instead.
+GRID = [
+    [None, "4.1.2.3", None],             # front mid (wide), on its own
+    ["4.1.2.4", "4.1.3.3", "4.1.4.3"],   # front left, front narrow, front right
+    ["4.1.3.4", "4.1.2.2", "4.1.4.4"],   # back left, back, back right (mirrored)
 ]
 ROLES = dict(CAMERA_ORDER)
+
+# Shown mirrored left-right, like a rear-view mirror, so the car's left side
+# appears on the left of the screen for the rear cameras too. Display only;
+# the frames themselves are not changed.
+MIRRORED = {"4.1.3.4", "4.1.2.2", "4.1.4.4"}
 _RANK = {port: rank for rank, (port, _) in enumerate(CAMERA_ORDER)}
 
 
@@ -190,8 +228,8 @@ class Grabber(threading.Thread):
         self.want_w = cfg.get("width", WIDTH)
         self.want_h = cfg.get("height", HEIGHT)
         self.want_fps = cfg.get("fps", FPS)
-        self.exposure = cfg.get("exposure")
-        self.gain = cfg.get("gain")
+        self.exposure = cfg.get("exposure", EXPOSURE)
+        self.gain = cfg.get("gain", GAIN)
         self.cost = reserved_mbs(self.want_w, self.want_h, self.want_fps)
         self.reopens = 0
         self._announced = False
@@ -234,6 +272,8 @@ class Grabber(threading.Thread):
  
         if LOCK_FRAMERATE:
             self._lock_framerate()
+        if POWER_LINE_HZ in (50, 60):
+            self._v4l2(f"--set-ctrl=power_line_frequency={1 if POWER_LINE_HZ == 50 else 2}")
  
         # Manual exposure: 1 = manual mode on UVC cameras. Exposure must be
         # set after switching modes or the camera ignores it.
@@ -356,6 +396,8 @@ def tile_for(grabber, position):
         tile = placeholder("STALLED", grabber.label)
     else:
         tile = cv2.resize(frame, (TILE_W, TILE_H), interpolation=cv2.INTER_AREA)
+        if grabber.port in MIRRORED:
+            tile = cv2.flip(tile, 1)
  
     colour = ((120, 235, 120) if rate >= 10 else
               (90, 200, 235) if rate >= 3 else (90, 90, 235))
@@ -367,17 +409,44 @@ def tile_for(grabber, position):
     return tile
  
  
+def arrange(grabbers):
+    """Rows of grabbers (None = empty slot) following GRID, else auto-filled."""
+    if not GRID:
+        rows, cols = layout_shape(grabbers)
+        slots = list(grabbers) + [None] * (rows * cols - len(grabbers))
+        return [slots[r * cols:(r + 1) * cols] for r in range(rows)]
+    by_port = {g.port: g for g in grabbers}
+    cols = max(len(row) for row in GRID)
+    layout = [[by_port.get(port) for port in row] + [None] * (cols - len(row)) for row in GRID]
+    placed = {port for row in GRID for port in row if port}
+    extra = [g for g in grabbers if g.port not in placed]
+    for start in range(0, len(extra), cols):
+        chunk = extra[start:start + cols]
+        layout.append(chunk + [None] * (cols - len(chunk)))
+    return layout
+
+
+def layout_shape(grabbers):
+    layout = arrange(grabbers)
+    return len(layout), len(layout[0])
+
+
 def compose(grabbers):
-    rows, cols = grid_shape(max(len(grabbers), 1))
-    tiles = [tile_for(g, i) for i, g in enumerate(grabbers)]
-    if not tiles:
-        tiles = [placeholder("NO CAMERAS", "waiting for a device")]
-    while len(tiles) < rows * cols:
-        blank = np.zeros((TILE_H, TILE_W, 3), np.uint8)
-        blank[:] = (18, 18, 18)
-        tiles.append(blank)
-    stacked = [np.hstack(tiles[r * cols:(r + 1) * cols]) for r in range(rows)]
-    return np.vstack(stacked)
+    if not grabbers:
+        return placeholder("NO CAMERAS", "waiting for a device")
+    index = {id(g): i for i, g in enumerate(grabbers)}
+    rows = []
+    for row in arrange(grabbers):
+        tiles = []
+        for g in row:
+            if g is None:
+                blank = np.zeros((TILE_H, TILE_W, 3), np.uint8)
+                blank[:] = (18, 18, 18)
+                tiles.append(blank)
+            else:
+                tiles.append(tile_for(g, index[id(g)]))
+        rows.append(np.hstack(tiles))
+    return np.vstack(rows)
  
  
 def report_budget(grabbers):
@@ -410,7 +479,7 @@ def main():
     time.sleep(1.0)          # let the last one negotiate before totalling
     report_budget(grabbers)
  
-    rows, cols = grid_shape(max(len(grabbers), 1))
+    rows, cols = layout_shape(grabbers)
     print(f"{len(grabbers)} camera(s) in a {cols}x{rows} grid. "
           f"Press q in the window to quit.\n")
  
@@ -423,7 +492,7 @@ def main():
     try:
         while True:
             if solo is not None and solo < len(grabbers):
-                rows, cols = grid_shape(max(len(grabbers), 1))
+                rows, cols = layout_shape(grabbers)
                 canvas = cv2.resize(tile_for(grabbers[solo], solo),
                                     (TILE_W * cols, TILE_H * rows))
             else:
@@ -445,7 +514,7 @@ def main():
                     grabbers.append(g)
                     grabbers.sort(key=lambda grabber: display_rank(grabber.port))
                     known.add(port)
-                    rows, cols = grid_shape(len(grabbers))
+                    rows, cols = layout_shape(grabbers)
                     cv2.resizeWindow(WINDOW, TILE_W * cols, TILE_H * rows)
  
             if now - last_report > 10:

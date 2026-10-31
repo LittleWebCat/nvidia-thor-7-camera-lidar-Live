@@ -1,36 +1,41 @@
-# Six USB cameras on Jetson AGX Thor
+# Seven USB cameras + Ouster LiDAR, live on Jetson AGX Thor
 
-Live viewer and USB driver fix for running six UVC cameras at once on a Jetson
-AGX Thor (Jetson Linux 38.2.x, kernel 6.8.12-tegra). With the patched
-`uvcvideo` driver in [`uvcvideo_mjpeg_patch/`](uvcvideo_mjpeg_patch/), all six
-stream MJPEG at **1280x720, 30 fps each**, on one USB 2.0 link.
+Live viewers for a multi-camera rig on a Jetson AGX Thor (Jetson Linux 38.2.x,
+kernel 6.8.12-tegra):
 
-## Demo
+- `cameras.py`: every connected UVC camera in one window, laid out as seen
+  from above the car, with live fps per camera.
+- `cameras_lidar.py`: the same camera grid with a live top-down view of an
+  Ouster OS1-128 LiDAR beside it.
 
-[![All six cameras live while driving](media/preview.jpg)](https://github.com/LittleWebCat/thor-six-usb-cameras/releases/download/v1.0/six_cameras_720p_drive.mp4)
+With the patched `uvcvideo` driver in [`uvcvideo_mjpeg_patch/`](uvcvideo_mjpeg_patch/),
+all seven cameras stream MJPEG **640x480 at 30 fps each** on one USB 2.0 link.
 
-[Download the demo video](https://github.com/LittleWebCat/thor-six-usb-cameras/releases/download/v1.0/six_cameras_720p_drive.mp4) (136 MB, from the [v1.0 release](https://github.com/LittleWebCat/thor-six-usb-cameras/releases/tag/v1.0)): a
-7.8-minute drive recorded from the viewer window, all six cameras at about
-30 fps. Top row: left front, narrow front, right front. Bottom row: left back,
-wide front, right back.
+![Seven cameras and the LiDAR top-down view](media/preview.jpg)
 
 ## Cameras
 
 Cameras are identified by USB port (from `/dev/v4l/by-path/`), because
-`/dev/videoN` numbers change between boots.
+`/dev/videoN` numbers change between boots. Several cameras of one model also
+report the same serial number, so the port is the only reliable identity.
 
-| Port | Role | Camera | USB ID | Modes used |
-|---|---|---|---|---|
-| 4.1.4.3 | left front | Global Shutter (AR0234) | 32e4:0234 | 1280x720 MJPG @30 |
-| 4.1.4.2 | narrow front | HD USB Camera | 32e4:8830 | 1024x768 MJPG @30 (no 720p mode) |
-| 4.1.4.4 | right front | Global Shutter (AR0234) | 32e4:0234 | 1280x720 MJPG @30 |
-| 4.1.3.3 | left back | Global Shutter (AR0234) | 32e4:0234 | 1280x720 MJPG @30 |
-| 4.1.3.4 | wide front | Global Shutter (AR0234) | 32e4:0234 | 1280x720 MJPG @30 |
-| 4.1.2.4 | right back | Global Shutter (AR0234) | 32e4:0234 | 1280x720 MJPG @30 |
+| Port | Role | Camera | USB ID |
+|---|---|---|---|
+| 4.1.2.3 | front mid (wide) | Global Shutter (AR0234) | 32e4:0234 |
+| 4.1.2.4 | front left | 16MP USB Camera | 32e4:0298 |
+| 4.1.3.3 | front narrow | HD USB Camera | 32e4:8830 |
+| 4.1.4.3 | front right | 16MP USB Camera | 32e4:0298 |
+| 4.1.3.4 | back left | 16MP USB Camera | 32e4:1298 |
+| 4.1.2.2 | back | Global Shutter (AR0234) | 32e4:0234 |
+| 4.1.4.4 | back right | 16MP USB Camera | 32e4:0298 |
 
-All six hang off one hub chain on the Thor's USB 2.0 root port `1-4`
-(480 Mbit/s shared). The Global Shutter cameras are USB 2.0 devices
-(`bcdUSB 2.00`), so a USB 3 port does not add bandwidth.
+Layout as of 2026-10-31. If a camera moves to another USB port, update
+`CAMERA_ORDER`, `GRID`, `MIRRORED` and `OVERRIDES` in `cameras.py`.
+
+All cameras hang off one hub chain on the Thor's USB 2.0 root port `1-4`
+(480 Mbit/s shared). They are USB 2.0 devices, so a USB 3 port adds no
+bandwidth. Use a hub with its own power supply: an under-powered hub dropped
+its USB 2.0 side with every camera on it (`unable to enumerate USB device`).
 
 ## Quick start
 
@@ -43,20 +48,79 @@ sudo apt install v4l-utils          # v4l2-ctl, used for frame rate and exposure
 Live view of every camera (the window opens on the Thor's display):
 
 ```bash
-DISPLAY=:1 camvenv/bin/python cameras.py MJPG 1280 720 30
+DISPLAY=:1 camvenv/bin/python cameras.py
 ```
 
-With no arguments the viewer uses YUYV 320x240 @20, which works with the stock
-driver. Any `FOURCC WIDTH HEIGHT FPS` can be passed on the command line.
+The default mode is MJPG 640x480 @30. Any `FOURCC WIDTH HEIGHT FPS` can be
+passed on the command line, e.g. `cameras.py MJPG 1280 720 30`.
 
-Keys in the window: `1`-`6` show one camera large, `0` returns to the grid,
-`f` toggles full screen, `q` quits.
+Keys: `1`-`9` show one camera large (numbered in reading order of the grid),
+`0` returns to the grid, `f` toggles full screen, `q` quits.
 
-The grid follows `CAMERA_ORDER` in `cameras.py`: front cameras on the top row
-(left front, narrow front, right front), rear and wide on the bottom (left
-back, wide front, right back). Each tile shows its role, port and live fps.
+### Layout
 
-## What limits six cameras, and the fix
+`GRID` in `cameras.py` places each camera by port, row by row; `None` leaves a
+slot empty. The current layout:
+
+| | Left | Middle | Right |
+|---|---|---|---|
+| Row 1 | | front mid (wide) | |
+| Row 2, front | front left | front narrow | front right |
+| Row 3, back | back left | back | back right |
+
+The back row is mirrored left-right (`MIRRORED`), like a rear-view mirror, so
+the car's left side is on the left of the screen in every row. Mirroring is
+display-only. Connected cameras missing from `GRID` appear on an extra row.
+
+## Cameras + LiDAR
+
+`cameras_lidar.py` adds a top-down view of the Ouster point cloud: 40 m ahead,
+20 m behind and 10 m to each side, distance rings every 10 m, points coloured
+by height. The LiDAR is mounted facing backwards, so its points are turned
+180 degrees (`LIDAR_YAW_DEG`) to put the car's front at the top.
+
+It needs ROS 2 Jazzy (`rclpy`), so it runs with the system Python, in the same
+ROS environment as the LiDAR driver:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+DISPLAY=:1 /usr/bin/python3 cameras_lidar.py
+```
+
+The LiDAR driver is the Ouster ROS 2 driver (`ouster_ros`), publishing
+`/points` at 20 Hz in mode `1024x20`. A terminal without the exports above uses
+ROS domain 0 and does not see the LiDAR topics. Converting about 130,000
+points per frame takes roughly two CPU cores.
+
+## Exposure and frame rate
+
+Auto exposure keeps the shutter open longer than a 30 fps frame allows in dim
+light, so cameras drop to 10-20 fps (the 16MP models to 10). Adding gain does
+not shorten it. The viewer therefore uses a fixed exposure:
+
+| Setting | Value |
+|---|---|
+| Shutter (`EXPOSURE`) | 30 ms (`300`, units of 0.1 ms); must stay under 33 ms for 30 fps |
+| Gain, 16MP cameras | 80 (smaller pixels, darker at the same shutter) |
+| Gain, Global Shutter and HD USB | 0 |
+| Anti-flicker (`POWER_LINE_HZ`) | 60 Hz (the cameras default to 50) |
+
+A fixed exposure does not adapt to light: tuned for a dim garage, it washes
+out views facing daylight. Outdoors, set `EXPOSURE = None` (auto), or a much
+shorter shutter. Per-camera values go in `OVERRIDES`.
+
+Also:
+
+- `BUFFERS = 4` driver buffers per camera. With 1 buffer the cameras drop
+  every other frame (20 fps becomes 10).
+- The viewer sets the frame rate on the device with `v4l2-ctl` and prints the
+  rate the device actually accepted, since some cameras ignore OpenCV's
+  request.
+- Settings live in the program, not the camera: an unplugged camera returns
+  to auto exposure and 50 Hz until the viewer opens it again.
+
+## What limits many cameras, and the fix
 
 In MJPEG the Global Shutter cameras ask for the largest USB 2.0 isochronous
 slot (3 x 1020 bytes per microframe, about 24 MB/s) at every resolution. Only
@@ -70,20 +134,11 @@ usb 1-4.1.4.3: Not enough bandwidth for altsetting 11
 The stock bandwidth quirk (`quirks=128` in `/etc/modprobe.d/uvcvideo.conf`)
 only applies to uncompressed formats. The patched driver adds a
 `mjpeg_payload` parameter that caps the MJPEG request; with
-`mjpeg_payload=800` each camera reserves about 6.4 MB/s, while a 720p frame
-stream actually needs about 4 MB/s. The HD USB camera uses bulk transfers,
-which reserve nothing, so it is never the one that fails.
+`mjpeg_payload=800` each camera reserves about 6.4 MB/s. Seven cameras at
+640x480 @30 reserve 44.8 MB/s of the roughly 60 MB/s available.
 
-All six cameras streaming at once:
-
-| Mode | Stock driver | Patched, `mjpeg_payload=800` |
-|---|---|---|
-| MJPG 320x240 @20 | 3 / 6 | 6 / 6 |
-| MJPG 640x480 @30 | 3 / 6 | 6 / 6 at 30 fps |
-| **MJPG 1280x720 @30** | 3 / 6 | **6 / 6 at 30 fps** |
-| MJPG 1920x1080 @30 | 3 / 6 | 5 / 6 (the USB 2.0 link is full) |
-| YUYV 320x240 @20 | 6 / 6 | 6 / 6 |
-| YUYV 640x480 @10 | 5 / 6 | 5 / 6 |
+Uncompressed YUYV does not scale: at 640x480 it needs about 18 MB/s per
+camera, two fit, and a third stops all of them (`Failed to resubmit video URB`).
 
 Build, install and undo steps: [`uvcvideo_mjpeg_patch/README.md`](uvcvideo_mjpeg_patch/README.md).
 Check that the patched driver is active:
@@ -92,26 +147,16 @@ Check that the patched driver is active:
 cat /sys/module/uvcvideo/parameters/mjpeg_payload     # 800; missing = stock driver
 ```
 
-## Exposure and frame rate
-
-- All cameras run on **auto exposure**. The viewer selects it explicitly on
-  every open, because a camera keeps its last exposure mode until it is
-  unplugged, even when another program set it. A fixed 30 ms exposure left
-  up to 26% of pixels pure white outdoors. For a fixed exposure on one
-  camera, add it to `OVERRIDES` (units of 0.1 ms), for example
-  `"4.1.3.4": {"exposure": 100, "gain": 20}`.
-- `BUFFERS = 4` driver buffers per camera. With 1 buffer the cameras drop
-  every other frame (20 fps becomes 10).
-- The viewer sets the frame rate on the device with `v4l2-ctl` and prints the
-  rate the device actually accepted, since some cameras ignore OpenCV's
-  request.
-
 ## Troubleshooting
 
 - **A tile says `NO FRAMES`:** run
   `grep "Not enough bandwidth" /var/log/kern.log | tail`. If it lists that
   camera, the patched driver is not loaded (see the check above), or the
   chosen mode needs more than the link has.
+- **Every camera disappears at once:** the hub dropped off the bus. Check its
+  power supply, then unplug and replug it.
+- **The LiDAR panel says `NO DATA`:** the driver is not running, or this
+  terminal is not in its ROS environment (see the exports above).
 - **The driver cannot be swapped (`Module uvcvideo is in use`):** close every
   program using a camera. `fuser -v /dev/video*` shows which one.
 - **After a JetPack or kernel update:** the patched module lives in the old
@@ -123,8 +168,9 @@ cat /sys/module/uvcvideo/parameters/mjpeg_payload     # 800; missing = stock dri
 | Path | Contents |
 |---|---|
 | `cameras.py` | Live viewer for every connected camera |
-| `requirements.txt` | Python packages for the viewer |
+| `cameras_lidar.py` | Camera grid plus live LiDAR top-down view (ROS 2) |
+| `requirements.txt` | Python packages for `cameras.py` |
 | `uvcvideo_mjpeg_patch/` | Driver patch, NVIDIA's original source, patched source, `check_all_cameras.py` |
-| `camtest.txt`, `hdcam.txt` | `v4l2-ctl` format and control dumps of the two camera models |
-| `media/preview.jpg` | Frame from the demo video (the video itself is on the v1.0 release) |
+| `camtest.txt`, `hdcam.txt` | `v4l2-ctl` format and control dumps of two camera models |
+| `media/preview.jpg` | Screenshot of the cameras and LiDAR view |
 | `cameras_working.py` | Earlier version of the viewer, kept for reference |
