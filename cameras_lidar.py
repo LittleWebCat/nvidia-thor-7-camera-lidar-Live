@@ -32,6 +32,7 @@ import queue
 import shutil
 import threading
 import time
+import traceback
 from pathlib import Path
 
 import cv2
@@ -89,6 +90,19 @@ class Recorder:
         self._frame_index = {}
         self._lidar_index = 0
         self._workers = []
+        self._log = None
+        self._stall_reported = False
+
+    def log(self, text):
+        """Print an event and, while recording, append it to the folder's log.txt."""
+        line = f"{time.strftime('%H:%M:%S')} {text}"
+        print(line, flush=True)
+        if self._log is not None:
+            try:
+                self._log.write(line + "\n")
+                self._log.flush()
+            except ValueError:
+                pass
 
     # -- control -----------------------------------------------------------
     def start(self, grabbers):
@@ -134,9 +148,10 @@ class Recorder:
                          for _ in range(WRITER_THREADS)]
         for worker in self._workers:
             worker.start()
+        self._log = open(self.folder / "log.txt", "a")
         self.started = time.time()
         self.active = True
-        print(f"Recording to {self.folder}")
+        self.log(f"Recording to {self.folder}")
 
     def stop(self):
         if not self.active:
@@ -151,9 +166,11 @@ class Recorder:
                 handle.close()
             self._files, self._writers = {}, {}
         seconds = time.time() - self.started
-        print(f"Stopped recording after {seconds:.0f} s: {self.counts['camera']} camera frames, "
-              f"{self.counts['lidar']} LiDAR scans, {self.counts['imu']} IMU samples, "
-              f"{self.dropped} dropped -> {self.folder}")
+        self.log(f"Stopped recording after {seconds:.0f} s: {self.counts['camera']} camera frames, "
+                 f"{self.counts['lidar']} LiDAR scans, {self.counts['imu']} IMU samples, "
+                 f"{self.dropped} dropped -> {self.folder}")
+        self._log.close()
+        self._log = None
 
     def toggle(self, grabbers):
         self.stop() if self.active else self.start(grabbers)
@@ -218,20 +235,28 @@ class Recorder:
                         self.counts[item[0]] += 1
             except Exception as exc:          # a full disk, say: count it, keep going
                 self.dropped += 1
-                print(f"recording write failed: {exc}")
+                self.log(f"recording write failed: {exc}")
 
     def check_disk(self):
         if self.active and shutil.disk_usage(RECORD_ROOT).free / 1e9 < MIN_FREE_GB:
             print(f"Less than {MIN_FREE_GB:g} GB free: stopping the recording")
             self.stop()
 
-    def banner(self, canvas):
+    def banner(self, canvas, lidar_age):
         if not self.active:
             return
         elapsed = int(time.time() - self.started)
         text = (f"REC {elapsed // 60:02d}:{elapsed % 60:02d}   cams {self.counts['camera']}   "
                 f"lidar {self.counts['lidar']}   imu {self.counts['imu']}   dropped {self.dropped}"
                 f"   queue {self._queue.qsize()}")
+        if lidar_age > 1.0:
+            text += f"   LIDAR STALLED {lidar_age:.0f}s"
+            if not self._stall_reported:
+                self._stall_reported = True
+                self.log(f"LiDAR stalled: no scan for {lidar_age:.1f} s")
+        elif self._stall_reported:
+            self._stall_reported = False
+            self.log("LiDAR resumed")
         cv2.rectangle(canvas, (0, 0), (canvas.shape[1], 34), (0, 0, 170), -1)
         cv2.circle(canvas, (18, 17), 8, (255, 255, 255), -1)
         cv2.putText(canvas, text, (34, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
@@ -248,8 +273,22 @@ class CloudListener(Node):
         self.points = None
         self.stamp = 0.0
         self._rate = 0.0
-        self.create_subscription(PointCloud2, TOPIC, self._on_cloud, qos_profile_sensor_data)
-        self.create_subscription(Imu, IMU_TOPIC, recorder.add_imu, qos_profile_sensor_data)
+        self.create_subscription(PointCloud2, TOPIC, self._safe_cloud, qos_profile_sensor_data)
+        self.create_subscription(Imu, IMU_TOPIC, self._safe_imu, qos_profile_sensor_data)
+
+    # An exception escaping a callback ends rclpy.spin, which silently stops
+    # all LiDAR and IMU data, so every callback error is logged and survived.
+    def _safe_cloud(self, msg):
+        try:
+            self._on_cloud(msg)
+        except Exception:
+            self.recorder.log("LiDAR callback error:\n" + traceback.format_exc())
+
+    def _safe_imu(self, msg):
+        try:
+            self.recorder.add_imu(msg)
+        except Exception:
+            self.recorder.log("IMU callback error:\n" + traceback.format_exc())
 
     def _on_cloud(self, msg):
         if self.recorder.active:
@@ -367,7 +406,7 @@ def main():
             grid = cameras.compose(grabbers)
             points, stamp, rate = listener.latest()
             canvas = np.hstack([grid, lidar_panel(points, stamp, rate, grid.shape[0])])
-            recorder.banner(canvas)
+            recorder.banner(canvas, time.time() - stamp if stamp else 999.0)
             cv2.imshow(WINDOW, canvas)
             key = cv2.waitKey(15) & 0xFF
             if key in (ord("q"), 27):
