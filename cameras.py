@@ -70,6 +70,41 @@ OVERRIDES = {
 EXPOSURE = 300       # 100 us units (300 = 30 ms), or None for auto
 GAIN = 40            # 0-100, or None
 POWER_LINE_HZ = 60   # anti-flicker for US mains; the cameras default to 50
+
+# Lighting preset, switchable live with the o key or at launch with --outdoor.
+#   "indoor":  the fixed shutter and per-camera gains above. Holds 30 fps in a
+#              dim garage, but blows out views facing daylight.
+#   "outdoor": each camera's own auto exposure, gain 0. Adapts to daylight
+#              (short shutters, 30 fps); in dim light it slows to 10-20 fps.
+LIGHTING = "outdoor" if "--outdoor" in sys.argv else "indoor"
+
+
+def lighting_controls(port, preset):
+    """v4l2 controls for one camera under a lighting preset, in the order UVC needs.
+
+    Manual exposure must be selected (auto_exposure=1) before the exposure
+    time is accepted. Auto (3 = aperture priority) is selected explicitly
+    because a camera keeps the last mode any program set until unplugged.
+    """
+    if preset == "outdoor":
+        return ["auto_exposure=3", "gain=0"]
+    cfg = OVERRIDES.get(port, {})
+    exposure, gain = cfg.get("exposure", EXPOSURE), cfg.get("gain", GAIN)
+    controls = (["auto_exposure=3"] if exposure is None
+                else ["auto_exposure=1", f"exposure_time_absolute={exposure}"])
+    if gain is not None:
+        controls.append(f"gain={gain}")
+    return controls
+
+
+def set_lighting(grabbers, preset):
+    """Switch every running camera to a lighting preset without reopening it."""
+    global LIGHTING
+    LIGHTING = preset
+    for grabber in grabbers:
+        for control in lighting_controls(grabber.port, preset):
+            grabber._v4l2(f"--set-ctrl={control}")
+    print(f"Lighting: {preset}")
  
 # For testing: list ports here to run ONLY those cameras, e.g.
 # ONLY_PORTS = ["4.1.4.2", "4.1.3.3"]. Leave empty to run every camera.
@@ -228,8 +263,6 @@ class Grabber(threading.Thread):
         self.want_w = cfg.get("width", WIDTH)
         self.want_h = cfg.get("height", HEIGHT)
         self.want_fps = cfg.get("fps", FPS)
-        self.exposure = cfg.get("exposure", EXPOSURE)
-        self.gain = cfg.get("gain", GAIN)
         self.cost = reserved_mbs(self.want_w, self.want_h, self.want_fps)
         self.reopens = 0
         self._announced = False
@@ -275,17 +308,10 @@ class Grabber(threading.Thread):
         if POWER_LINE_HZ in (50, 60):
             self._v4l2(f"--set-ctrl=power_line_frequency={1 if POWER_LINE_HZ == 50 else 2}")
  
-        # Manual exposure: 1 = manual mode on UVC cameras. Exposure must be
-        # set after switching modes or the camera ignores it.
-        # Otherwise select auto (3 = aperture priority) explicitly: the camera
-        # keeps the last mode set until it is unplugged, even by another program.
-        if self.exposure is not None:
-            self._v4l2("--set-ctrl=auto_exposure=1")
-            self._v4l2(f"--set-ctrl=exposure_time_absolute={self.exposure}")
-        else:
-            self._v4l2("--set-ctrl=auto_exposure=3")
-        if self.gain is not None:
-            self._v4l2(f"--set-ctrl=gain={self.gain}")
+        # Exposure and gain follow the current lighting preset, so a camera
+        # that reconnects keeps the preset chosen with the o key.
+        for control in lighting_controls(self.port, LIGHTING):
+            self._v4l2(f"--set-ctrl={control}")
  
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -525,6 +551,8 @@ def main():
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
+            elif key == ord("o"):
+                set_lighting(grabbers, "indoor" if LIGHTING == "outdoor" else "outdoor")
             elif key == ord("f"):
                 fullscreen = not fullscreen
                 cv2.setWindowProperty(

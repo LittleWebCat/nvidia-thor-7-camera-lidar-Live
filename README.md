@@ -60,7 +60,8 @@ The default mode is MJPG 640x480 @30. Any `FOURCC WIDTH HEIGHT FPS` can be
 passed on the command line, e.g. `cameras.py MJPG 1280 720 30`.
 
 Keys: `1`-`9` show one camera large (numbered in reading order of the grid),
-`0` returns to the grid, `f` toggles full screen, `q` quits.
+`0` returns to the grid, `o` switches indoor/outdoor exposure, `f` toggles full
+screen, `q` quits.
 
 ### Layout
 
@@ -133,8 +134,15 @@ not shorten it. The viewer therefore uses a fixed exposure:
 | Anti-flicker (`POWER_LINE_HZ`) | 60 Hz (the cameras default to 50) |
 
 A fixed exposure does not adapt to light: tuned for a dim garage, it washes
-out views facing daylight. Outdoors, set `EXPOSURE = None` (auto), or a much
-shorter shutter. Per-camera values go in `OVERRIDES`.
+out views facing daylight. Both viewers therefore have two lighting presets:
+
+| Preset | Exposure | Use |
+|---|---|---|
+| `indoor` (default) | Fixed 30 ms shutter, per-camera gain | Dim garage: holds 30 fps |
+| `outdoor` | Each camera's auto exposure, gain 0 | Daylight: short shutters, 30 fps |
+
+Press `o` in the window to switch live, or launch with `--outdoor`. Per-camera
+indoor values go in `OVERRIDES`.
 
 Also:
 

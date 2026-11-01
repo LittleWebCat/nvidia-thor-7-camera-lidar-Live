@@ -11,7 +11,8 @@ ROS environment:
     export ROS_DOMAIN_ID=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
     DISPLAY=:1 /usr/bin/python3 cameras_lidar.py            # add --record to start recording
 
-Keys: r starts/stops recording, f toggles fullscreen, q quits.
+Keys: r starts/stops recording, o switches indoor/outdoor exposure,
+f toggles fullscreen, q quits. Launch with --outdoor in daylight.
 
 A recording is one folder, recordings/YYYYMMDD_HHMMSS/:
     meta.json                 ports, roles, capture modes, LiDAR mounting
@@ -374,6 +375,8 @@ def lidar_panel(points, stamp, rate, height):
 def main():
     parser = argparse.ArgumentParser(description="7-camera + LiDAR live view and recorder")
     parser.add_argument("--record", action="store_true", help="start recording at launch")
+    parser.add_argument("--outdoor", action="store_true",
+                        help="start with auto exposure for daylight (o switches live)")
     args = parser.parse_args()
 
     recorder = Recorder()
@@ -388,8 +391,8 @@ def main():
         grabber.start()
         grabbers.append(grabber)
         time.sleep(cameras.OPEN_STAGGER)
-    print(f"{len(grabbers)} camera(s); LiDAR topic {TOPIC}. "
-          f"Press r in the window to record, q to quit.")
+    print(f"{len(grabbers)} camera(s), lighting {cameras.LIGHTING}; LiDAR topic {TOPIC}. "
+          f"Press r to record, o to switch indoor/outdoor, q to quit.")
 
     running = threading.Event()
     running.set()
@@ -413,6 +416,9 @@ def main():
                 break
             if key == ord("r"):
                 recorder.toggle(grabbers)
+            if key == ord("o"):
+                cameras.set_lighting(grabbers, "indoor" if cameras.LIGHTING == "outdoor" else "outdoor")
+                recorder.log(f"lighting -> {cameras.LIGHTING}")
             if key == ord("f"):
                 fullscreen = not fullscreen
                 cv2.setWindowProperty(WINDOW, cv2.WND_PROP_FULLSCREEN,
