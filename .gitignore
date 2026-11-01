@@ -14,3 +14,6 @@ modules.order
 
 # Demo video is attached to the GitHub release, not stored in git (over 100 MB)
 media/*.mp4
+
+# Data recorded by cameras_lidar.py
+recordings/

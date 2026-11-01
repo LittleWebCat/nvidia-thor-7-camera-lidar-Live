@@ -80,9 +80,9 @@ ONLY_PORTS = []
 # Updated 2026-10-31: two Global Shutter (front mid, back), four 16MP and an
 # HD USB narrow front.
 CAMERA_ORDER = [
-    ("4.1.2.3", "front mid"),
-    ("4.1.2.4", "front left"),
     ("4.1.3.3", "front narrow"),
+    ("4.1.2.4", "front left"),
+    ("4.1.2.3", "front mid"),
     ("4.1.4.3", "front right"),
     ("4.1.3.4", "back left"),
     ("4.1.2.2", "back"),
@@ -93,8 +93,8 @@ CAMERA_ORDER = [
 # cameras not placed here go on an extra row at the bottom. Set GRID = [] to
 # fill the window automatically in CAMERA_ORDER instead.
 GRID = [
-    [None, "4.1.2.3", None],             # front mid (wide), on its own
-    ["4.1.2.4", "4.1.3.3", "4.1.4.3"],   # front left, front narrow, front right
+    [None, "4.1.3.3", None],             # front narrow, on its own
+    ["4.1.2.4", "4.1.2.3", "4.1.4.3"],   # front left, front mid (wide), front right
     ["4.1.3.4", "4.1.2.2", "4.1.4.4"],   # back left, back, back right (mirrored)
 ]
 ROLES = dict(CAMERA_ORDER)

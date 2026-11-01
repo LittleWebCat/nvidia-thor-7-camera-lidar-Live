@@ -69,8 +69,8 @@ slot empty. The current layout:
 
 | | Left | Middle | Right |
 |---|---|---|---|
-| Row 1 | | front mid (wide) | |
-| Row 2, front | front left | front narrow | front right |
+| Row 1 | | front narrow | |
+| Row 2, front | front left | front mid (wide) | front right |
 | Row 3, back | back left | back | back right |
 
 The back row is mirrored left-right (`MIRRORED`), like a rear-view mirror, so
@@ -92,6 +92,27 @@ source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
 DISPLAY=:1 /usr/bin/python3 cameras_lidar.py
 ```
+
+### Recording
+
+Press `r` in the window to start and stop recording, or launch with
+`--record`. A red `REC` bar shows elapsed time, counts and dropped items.
+Each recording is one folder, `recordings/YYYYMMDD_HHMMSS/`:
+
+| Path | Contents |
+|---|---|
+| `meta.json` | Ports, roles, capture modes, LiDAR mounting (`yaw_to_car_deg`) |
+| `cameras/<role>/NNNNNN.jpg` | Every frame from each camera, as captured (not mirrored) |
+| `cameras.csv` | Camera, port, index, wall-clock and monotonic time (ns), file |
+| `lidar/NNNNNN.npz` | Each scan: `xyz` (float32, metres, LiDAR frame) and `intensity` (uint16) |
+| `lidar.csv` | Index, ROS stamp, wall-clock and monotonic time (ns), point count, file |
+| `lidar_imu.csv` | Ouster IMU at 100 Hz: acceleration and angular rate (LiDAR frame) |
+
+Measured on the rig: all seven cameras at 30 fps, LiDAR at 20 Hz, nothing
+dropped, about **47 MB/s (2.8 GB per minute)**. Recording refuses to start,
+and stops itself, below 5 GB of free disk. LiDAR data stays in the LiDAR's
+frame: rotate by `LIDAR_YAW_DEG` (180) to get the car frame (x forward, y left).
+`recordings/` is ignored by git.
 
 The LiDAR driver is the Ouster ROS 2 driver (`ouster_ros`), publishing
 `/points` at 20 Hz in mode `1024x20`. A terminal without the exports above uses
@@ -173,7 +194,7 @@ cat /sys/module/uvcvideo/parameters/mjpeg_payload     # 800; missing = stock dri
 | Path | Contents |
 |---|---|
 | `cameras.py` | Live viewer for every connected camera |
-| `cameras_lidar.py` | Camera grid plus live LiDAR top-down view (ROS 2) |
+| `cameras_lidar.py` | Camera grid plus live LiDAR top-down view and recording (ROS 2) |
 | `requirements.txt` | Python packages for `cameras.py` |
 | `uvcvideo_mjpeg_patch/` | Driver patch, NVIDIA's original source, patched source, `check_all_cameras.py` |
 | `camtest.txt`, `hdcam.txt` | `v4l2-ctl` format and control dumps of two camera models |
