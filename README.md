@@ -69,8 +69,8 @@ slot empty. The current layout:
 
 | | Left | Middle | Right |
 |---|---|---|---|
-| Row 1 | | front narrow | |
-| Row 2, front | front left | front mid (wide) | front right |
+| Row 1 | | front mid (wide) | |
+| Row 2, front | front left | front narrow | front right |
 | Row 3, back | back left | back | back right |
 
 The back row is mirrored left-right (`MIRRORED`), like a rear-view mirror, so
