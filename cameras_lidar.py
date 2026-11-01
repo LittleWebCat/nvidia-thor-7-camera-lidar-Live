@@ -137,7 +137,9 @@ class Recorder:
             ("imu", "lidar_imu.csv",
              ["ros_stamp_ns", "wall_time_ns", "ax", "ay", "az", "gx", "gy", "gz"]),
         ):
-            handle = open(self.folder / filename, "w", newline="")
+            # Line-buffered: every row reaches the disk at once, so a crash
+            # (e.g. the USB hub dropping every camera) loses nothing written.
+            handle = open(self.folder / filename, "w", newline="", buffering=1)
             self._files[name] = handle
             self._writers[name] = csv.writer(handle)
             self._writers[name].writerow(header)
