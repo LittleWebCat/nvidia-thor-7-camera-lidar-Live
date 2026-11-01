@@ -6,7 +6,8 @@ kernel 6.8.12-tegra):
 - `cameras.py`: every connected UVC camera in one window, laid out as seen
   from above the car, with live fps per camera.
 - `cameras_lidar.py`: the same camera grid with a live top-down view of an
-  Ouster OS1-128 LiDAR beside it.
+  Ouster OS1-128 LiDAR beside it, and recording of all cameras, LiDAR scans
+  and the LiDAR's IMU.
 
 With the patched `uvcvideo` driver in [`uvcvideo_mjpeg_patch/`](uvcvideo_mjpeg_patch/),
 all seven cameras stream MJPEG **640x480 at 30 fps each** on one USB 2.0 link.
@@ -38,9 +39,14 @@ Layout as of 2026-10-31. If a camera moves to another USB port, update
 `CAMERA_ORDER`, `GRID`, `MIRRORED` and `OVERRIDES` in `cameras.py`.
 
 All cameras hang off one hub chain on the Thor's USB 2.0 root port `1-4`
-(480 Mbit/s shared). They are USB 2.0 devices, so a USB 3 port adds no
-bandwidth. Use a hub with its own power supply: an under-powered hub dropped
-its USB 2.0 side with every camera on it (`unable to enumerate USB device`).
+(480 Mbit/s shared), together with the Xsens MTi-30 IMU and the Septentrio GPS.
+They are USB 2.0 devices, so a USB 3 port adds no bandwidth.
+
+Use a hub with its own power supply and a firm cable to the Thor. The hub has
+dropped off the bus several times, taking every camera, the IMU and the GPS
+with it at once (kernel log: a burst of `USB disconnect` for `1-4.1.*`, or
+`unable to enumerate USB device`). It comes back within seconds, but the
+viewer exits (see Troubleshooting).
 
 ## Quick start
 
@@ -86,19 +92,27 @@ by height. The LiDAR is mounted facing backwards, so its points are turned
 180 degrees (`LIDAR_YAW_DEG`) to put the car's front at the top.
 
 It needs ROS 2 Jazzy (`rclpy`), so it runs with the system Python, in the same
-ROS environment as the LiDAR driver:
+ROS environment as the LiDAR driver. Start the Ouster driver first (in its own
+terminal), then the viewer:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=1 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
-DISPLAY=:1 /usr/bin/python3 cameras_lidar.py
+DISPLAY=:1 /usr/bin/python3 cameras_lidar.py              # indoors
+DISPLAY=:1 /usr/bin/python3 cameras_lidar.py --outdoor    # daylight
 ```
+
+Options: `--outdoor` starts with auto exposure (see Exposure below),
+`--record` starts recording at launch. Keys: `r` starts/stops recording, `o`
+switches indoor/outdoor exposure, `f` toggles full screen, `q` quits (and
+finishes any recording).
 
 ### Recording
 
 Press `r` in the window to start and stop recording, or launch with
-`--record`. A red `REC` bar shows elapsed time, counts and dropped items.
-Each recording is one folder, `recordings/YYYYMMDD_HHMMSS/`:
+`--record`. A red `REC` bar shows elapsed time, counts, dropped items and the
+write queue; it adds `LIDAR STALLED` if no LiDAR scan arrives for over a
+second. Each recording is one folder, `recordings/YYYYMMDD_HHMMSS/`:
 
 | Path | Contents |
 |---|---|
@@ -108,15 +122,27 @@ Each recording is one folder, `recordings/YYYYMMDD_HHMMSS/`:
 | `lidar/NNNNNN.npz` | Each scan: `xyz` (float32, metres, LiDAR frame) and `intensity` (uint16) |
 | `lidar.csv` | Index, ROS stamp, wall-clock and monotonic time (ns), point count, file |
 | `lidar_imu.csv` | Ouster IMU at 100 Hz: acceleration and angular rate (LiDAR frame) |
+| `log.txt` | Start/stop, lighting switches, LiDAR stalls and any errors |
 
 Measured on the rig: all seven cameras at 30 fps, LiDAR at 20 Hz, nothing
-dropped, about **47 MB/s (2.8 GB per minute)**. Recording refuses to start,
-and stops itself, below 5 GB of free disk. LiDAR data stays in the LiDAR's
-frame: rotate by `LIDAR_YAW_DEG` (180) to get the car frame (x forward, y left).
-`recordings/` is ignored by git.
+dropped. Size depends on the scene: **19-47 MB/s (about 1.1-2.8 GB per
+minute)**. Recording refuses to start, and stops itself, below 5 GB of free
+disk.
 
-The LiDAR driver is the Ouster ROS 2 driver (`ouster_ros`), publishing
-`/points` at 20 Hz in mode `1024x20`. A terminal without the exports above uses
+- Files are written by background threads, so the display never waits for
+  the disk; if the disk falls behind, new items are dropped and counted.
+- The CSV indexes are written line by line, so a crash keeps everything
+  recorded up to that moment.
+- An error in the LiDAR or IMU callback is logged and survived instead of
+  silently stopping LiDAR data.
+- LiDAR data stays in the LiDAR's frame: rotate by `LIDAR_YAW_DEG` (180) to
+  get the car frame (x forward, y left).
+- GPS and the Xsens IMU are not recorded yet.
+- `recordings/` is ignored by git.
+
+The LiDAR driver is the Ouster ROS 2 driver (`ouster_ros`, started with the
+rig's `start_ouster.sh`), publishing `/points` at 20 Hz in mode `1024x20` and
+`/imu` at 100 Hz. A terminal without the exports above uses
 ROS domain 0 and does not see the LiDAR topics. Converting about 130,000
 points per frame takes roughly two CPU cores.
 
@@ -187,8 +213,15 @@ cat /sys/module/uvcvideo/parameters/mjpeg_payload     # 800; missing = stock dri
   `grep "Not enough bandwidth" /var/log/kern.log | tail`. If it lists that
   camera, the patched driver is not loaded (see the check above), or the
   chosen mode needs more than the link has.
-- **Every camera disappears at once:** the hub dropped off the bus. Check its
-  power supply, then unplug and replug it.
+- **Every camera disappears at once** (`No such device` for every camera, then
+  `terminate called without an active exception`): the USB hub dropped off
+  the bus, and OpenCV aborts the viewer. Check the hub's power supply and its
+  cable to the Thor, wait for the cameras to return (`v4l2-ctl --list-devices`),
+  and start the viewer again. A recording keeps everything written before
+  the crash.
+- **`LIDAR STALLED` while recording:** the LiDAR driver stopped publishing, or
+  the viewer stopped receiving. The cause is in the terminal and in the
+  recording's `log.txt`.
 - **The LiDAR panel says `NO DATA`:** the driver is not running, or this
   terminal is not in its ROS environment (see the exports above).
 - **The driver cannot be swapped (`Module uvcvideo is in use`):** close every
