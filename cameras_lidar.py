@@ -19,7 +19,8 @@ A recording is one folder, recordings/YYYYMMDD_HHMMSS/:
     cameras.csv               camera, port, index, wall/monotonic time, file
     cameras/<role>/NNNNNN.jpg every new frame from each camera (not mirrored)
     lidar.csv                 index, ROS stamp, wall/monotonic time, points, file
-    lidar/NNNNNN.npz          xyz (float32, LiDAR frame) and intensity (uint16)
+    lidar/NNNNNN.pcd          binary PCD: x y z (float32, LiDAR frame), intensity
+                              (uint16, signal), reflectivity (uint8, 0-255)
     lidar_imu.csv             Ouster IMU at 100 Hz (LiDAR frame)
 LiDAR data stays in the LiDAR's own frame; turn it by LIDAR_YAW_DEG to get
 the car frame (x forward, y left).
@@ -64,6 +65,41 @@ JPEG_QUALITY = 90
 MIN_FREE_GB = 5.0         # recording stops itself below this much free disk
 WRITER_THREADS = 4
 QUEUE_LIMIT = 600         # items waiting for disk; beyond this, new items are dropped
+
+
+PCD_FIELDS = [("x", "<f4", 4, "F"), ("y", "<f4", 4, "F"), ("z", "<f4", 4, "F"),
+              ("intensity", "<u2", 2, "U"), ("reflectivity", "u1", 1, "U")]
+
+
+def write_pcd(path, xyz, intensity, reflectivity=None):
+    """Binary PCD v0.7 per point: x y z (float32, metres), intensity (uint16,
+    Ouster signal) and, when the driver sends it, reflectivity (uint8, 0-255).
+
+    One numpy copy interleaves the fields (15 bytes per point), so writing
+    costs about the same as before.
+    """
+    fields = PCD_FIELDS if reflectivity is not None else PCD_FIELDS[:4]
+    points = np.empty(len(xyz), np.dtype([(name, dtype) for name, dtype, _, _ in fields]))
+    points["x"], points["y"], points["z"] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+    points["intensity"] = intensity
+    if reflectivity is not None:
+        points["reflectivity"] = reflectivity
+    header = (
+        "# .PCD v0.7 - Point Cloud Data file format\n"
+        "VERSION 0.7\n"
+        f"FIELDS {' '.join(f[0] for f in fields)}\n"
+        f"SIZE {' '.join(str(f[2]) for f in fields)}\n"
+        f"TYPE {' '.join(f[3] for f in fields)}\n"
+        f"COUNT {' '.join('1' for _ in fields)}\n"
+        f"WIDTH {len(points)}\n"
+        "HEIGHT 1\n"
+        "VIEWPOINT 0 0 0 1 0 0 0\n"
+        f"POINTS {len(points)}\n"
+        "DATA binary\n"
+    )
+    with open(path, "wb") as handle:
+        handle.write(header.encode("ascii"))
+        handle.write(points.tobytes())
 
 
 def stamp_ns(msg):
@@ -126,7 +162,8 @@ class Recorder:
             ],
             "lidar": {"topic": TOPIC, "imu_topic": IMU_TOPIC, "frame": "LiDAR",
                       "yaw_to_car_deg": LIDAR_YAW_DEG,
-                      "points": "xyz float32 metres, intensity uint16"},
+                      "points": "binary PCD: x y z float32 metres, intensity uint16 (signal), "
+                                "reflectivity uint8 0-255 (0-100 diffuse %, 101-255 retroreflector)"},
         }
         (self.folder / "meta.json").write_text(json.dumps(meta, indent=2))
         for name, filename, header in (
@@ -190,12 +227,13 @@ class Recorder:
         self._frame_index[grabber.port] = index + 1
         self._put(("camera", grabber.port, index, int(wall_time * 1e9), time.monotonic_ns(), frame))
 
-    def add_scan(self, ros_stamp, xyz, intensity):
+    def add_scan(self, ros_stamp, xyz, intensity, reflectivity):
         if not self.active:
             return
         index = self._lidar_index
         self._lidar_index += 1
-        self._put(("lidar", index, ros_stamp, time.time_ns(), time.monotonic_ns(), xyz, intensity))
+        self._put(("lidar", index, ros_stamp, time.time_ns(), time.monotonic_ns(),
+                   xyz, intensity, reflectivity))
 
     def add_imu(self, msg):
         if not self.active:
@@ -228,9 +266,9 @@ class Recorder:
                     cv2.imwrite(str(path), frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
                     row = [cameras.ROLES.get(port, port), port, index, wall_ns, mono_ns, rel]
                 else:
-                    _, index, ros_ns, wall_ns, mono_ns, xyz, intensity = item
-                    rel = f"lidar/{index:06d}.npz"
-                    np.savez(self.folder / rel, xyz=xyz, intensity=intensity)
+                    _, index, ros_ns, wall_ns, mono_ns, xyz, intensity, reflectivity = item
+                    rel = f"lidar/{index:06d}.pcd"
+                    write_pcd(self.folder / rel, xyz, intensity, reflectivity)
                     row = [index, ros_ns, wall_ns, mono_ns, len(xyz), rel]
                 with self._csv_lock:
                     if item[0] in self._writers:
@@ -276,6 +314,7 @@ class CloudListener(Node):
         self.points = None
         self.stamp = 0.0
         self._rate = 0.0
+        self._missing_refl_logged = False
         self.create_subscription(PointCloud2, TOPIC, self._safe_cloud, qos_profile_sensor_data)
         self.create_subscription(Imu, IMU_TOPIC, self._safe_imu, qos_profile_sensor_data)
 
@@ -295,13 +334,22 @@ class CloudListener(Node):
 
     def _on_cloud(self, msg):
         if self.recorder.active:
-            cloud = point_cloud2.read_points(msg, field_names=("x", "y", "z", "intensity"),
-                                             skip_nans=True)
+            # Reflectivity needs the driver's point_type "original"; with
+            # "xyzir" it is absent and scans are recorded without it.
+            has_refl = any(f.name == "reflectivity" for f in msg.fields)
+            if not has_refl and not self._missing_refl_logged:
+                self._missing_refl_logged = True
+                self.recorder.log("LiDAR sends no reflectivity (driver point_type is not "
+                                  "'original'); recording x y z intensity only")
+            names = ("x", "y", "z", "intensity") + (("reflectivity",) if has_refl else ())
+            cloud = point_cloud2.read_points(msg, field_names=names, skip_nans=True)
             xyz = np.stack([cloud["x"], cloud["y"], cloud["z"]], axis=1).astype(np.float32)
             keep = np.any(xyz != 0.0, axis=1)                # Ouster marks no-return as 0,0,0
             xyz = xyz[keep]
             intensity = np.clip(cloud["intensity"][keep], 0, 65535).astype(np.uint16)
-            self.recorder.add_scan(stamp_ns(msg), xyz, intensity)
+            reflectivity = (np.clip(cloud["reflectivity"][keep], 0, 255).astype(np.uint8)
+                            if has_refl else None)
+            self.recorder.add_scan(stamp_ns(msg), xyz, intensity, reflectivity)
         else:
             xyz = point_cloud2.read_points_numpy(msg, field_names=("x", "y", "z"), skip_nans=True)
         now = time.time()

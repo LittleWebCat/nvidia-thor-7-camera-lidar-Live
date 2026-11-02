@@ -119,7 +119,7 @@ second. Each recording is one folder, `recordings/YYYYMMDD_HHMMSS/`:
 | `meta.json` | Ports, roles, capture modes, LiDAR mounting (`yaw_to_car_deg`) |
 | `cameras/<role>/NNNNNN.jpg` | Every frame from each camera, as captured (not mirrored) |
 | `cameras.csv` | Camera, port, index, wall-clock and monotonic time (ns), file |
-| `lidar/NNNNNN.npz` | Each scan: `xyz` (float32, metres, LiDAR frame) and `intensity` (uint16) |
+| `lidar/NNNNNN.pcd` | Each scan as binary PCD (opens in PCL, Open3D, CloudCompare): `x y z` (float32, metres, LiDAR frame), `intensity` (uint16, Ouster signal), `reflectivity` (uint8, 0-255) |
 | `lidar.csv` | Index, ROS stamp, wall-clock and monotonic time (ns), point count, file |
 | `lidar_imu.csv` | Ouster IMU at 100 Hz: acceleration and angular rate (LiDAR frame) |
 | `log.txt` | Start/stop, lighting switches, LiDAR stalls and any errors |
@@ -137,12 +137,21 @@ disk.
   silently stopping LiDAR data.
 - LiDAR data stays in the LiDAR's frame: rotate by `LIDAR_YAW_DEG` (180) to
   get the car frame (x forward, y left).
+- `intensity` is the Ouster **signal** (returned light, 0-65535; depends on
+  distance). `reflectivity` is the surface's calibrated reflectivity:
+  0-100 for ordinary surfaces (roughly percent), 101-255 for retroreflectors
+  such as signs, lane paint and plates. Reflectivity needs the driver's
+  `point_type: "original"` (in the rig's `ouster_params.yaml`); with `xyzir`
+  scans are recorded without it and `log.txt` says so.
+- Each scan takes about 15 ms to convert out of the 50 ms available at 20 Hz;
+  writing a `.pcd` takes about 3 ms on a background thread.
 - GPS and the Xsens IMU are not recorded yet.
 - `recordings/` is ignored by git.
 
 The LiDAR driver is the Ouster ROS 2 driver (`ouster_ros`, started with the
-rig's `start_ouster.sh`), publishing `/points` at 20 Hz in mode `1024x20` and
-`/imu` at 100 Hz. A terminal without the exports above uses
+rig's `start_ouster.sh`), publishing `/points` at 20 Hz in mode `1024x20`
+(`point_type: "original"`, so every point carries reflectivity) and `/imu` at
+100 Hz. A terminal without the exports above uses
 ROS domain 0 and does not see the LiDAR topics. Converting about 130,000
 points per frame takes roughly two CPU cores.
 
